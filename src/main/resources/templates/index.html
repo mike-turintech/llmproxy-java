@@ -63,6 +63,27 @@
             width: 1.5rem;
             height: 1.5rem;
         }
+        .card {
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+        .dark-mode .card:hover {
+            box-shadow: 0 10px 20px rgba(255,255,255,0.1);
+        }
+        .response-area {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .comparison-highlight {
+            font-weight: bold;
+            color: #28a745;
+        }
+        .dark-mode .comparison-highlight {
+            color: #5cb85c;
+        }
     </style>
 </head>
 <body>
@@ -124,14 +145,16 @@
                     </div>
                     
                     <div class="row mb-3">
-                        <div class="col-md-4">
-                            <label for="model" class="form-label">Model (Optional)</label>
-                            <select class="form-select" id="model">
-                                <option value="">Auto-select</option>
-                                <option th:each="modelType : ${modelTypes}" th:value="${modelType}" th:text="${modelType}"></option>
-                            </select>
+                        <div class="col-md-6">
+                            <label class="form-label">Select Models to Compare</label>
+                            <div class="d-flex flex-wrap gap-3">
+                                <div class="form-check" th:each="modelType : ${modelTypes}">
+                                    <input class="form-check-input model-checkbox" type="checkbox" th:value="${modelType}" th:id="${'model-' + modelType}" th:disabled="${!openaiAvailable && modelType == 'OPENAI' || !geminiAvailable && modelType == 'GEMINI' || !mistralAvailable && modelType == 'MISTRAL' || !claudeAvailable && modelType == 'CLAUDE'}">
+                                    <label class="form-check-label" th:for="${'model-' + modelType}" th:text="${modelType}"></label>
+                                </div>
+                            </div>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-3">
                             <label for="model-version" class="form-label">Model Version (Optional)</label>
                             <select class="form-select" id="model-version">
                                 <option value="">Default</option>
@@ -161,7 +184,7 @@
                                 </optgroup>
                             </select>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-3">
                             <label for="task-type" class="form-label">Task Type (Optional)</label>
                             <select class="form-select" id="task-type">
                                 <option value="">Auto-select</option>
@@ -185,37 +208,29 @@
                 </form>
                 
                 <div id="response-container" class="mt-4" style="display: none;">
-                    <h5>Response</h5>
-                    <div class="response-area" id="response-text"></div>
+                    <h5>Responses</h5>
+                    <div id="responses-grid" class="row row-cols-1 row-cols-md-2 g-4">
+                        <!-- Response cards will be dynamically added here -->
+                    </div>
                     
-                    <div class="d-flex justify-content-between align-items-center mt-3">
-                        <div class="token-info">
-                            <div><strong>Model:</strong> <span id="response-model"></span></div>
-                            <div><strong>Response Time:</strong> <span id="response-time"></span> ms</div>
-                            <div><strong>Tokens:</strong> <span id="input-tokens"></span> input / <span id="output-tokens"></span> output / <span id="total-tokens"></span> total</div>
-                            <div><strong>Cached:</strong> <span id="response-cached"></span></div>
-                        </div>
-                        
-                        <div class="btn-group">
-                            <button class="btn btn-outline-secondary" id="copy-btn">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-clipboard" viewBox="0 0 16 16">
-                                    <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/>
-                                    <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/>
-                                </svg>
-                                Copy
-                            </button>
-                            <button class="btn btn-outline-secondary dropdown-toggle" type="button" id="downloadDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-download" viewBox="0 0 16 16">
-                                    <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
-                                    <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
-                                </svg>
-                                Download
-                            </button>
-                            <ul class="dropdown-menu" aria-labelledby="downloadDropdown">
-                                <li><a class="dropdown-item" href="#" data-format="txt">Text (.txt)</a></li>
-                                <li><a class="dropdown-item" href="#" data-format="pdf">PDF (.pdf)</a></li>
-                                <li><a class="dropdown-item" href="#" data-format="docx">Word (.docx)</a></li>
-                            </ul>
+                    <div class="mt-4">
+                        <h5>Performance Comparison</h5>
+                        <div class="table-responsive">
+                            <table class="table table-bordered">
+                                <thead>
+                                    <tr>
+                                        <th>Model</th>
+                                        <th>Response Time (ms)</th>
+                                        <th>Input Tokens</th>
+                                        <th>Output Tokens</th>
+                                        <th>Total Tokens</th>
+                                        <th>Cached</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="comparison-table-body">
+                                    <!-- Comparison rows will be dynamically added here -->
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
@@ -259,6 +274,8 @@
             const loading = document.querySelector('.loading');
             const responseContainer = document.getElementById('response-container');
             const errorContainer = document.getElementById('error-container');
+            const responsesGrid = document.getElementById('responses-grid');
+            const comparisonTableBody = document.getElementById('comparison-table-body');
             
             queryForm.addEventListener('submit', function(e) {
                 e.preventDefault();
@@ -269,7 +286,14 @@
                     return;
                 }
                 
-                const model = document.getElementById('model').value;
+                // Get selected models
+                const selectedModels = Array.from(document.querySelectorAll('.model-checkbox:checked')).map(checkbox => checkbox.value);
+                
+                if (selectedModels.length === 0) {
+                    showError('Please select at least one model');
+                    return;
+                }
+                
                 const modelVersion = document.getElementById('model-version').value;
                 const taskType = document.getElementById('task-type').value;
                 
@@ -278,106 +302,182 @@
                 errorContainer.style.display = 'none';
                 loading.style.display = 'flex';
                 
-                // Prepare request
-                const requestData = {
-                    query: query
-                };
+                // Clear previous responses
+                responsesGrid.innerHTML = '';
+                comparisonTableBody.innerHTML = '';
                 
-                if (model) requestData.model = model;
-                if (modelVersion) requestData.modelVersion = modelVersion;
-                if (taskType) requestData.taskType = taskType;
+                // Create an array to store all responses
+                const responses = [];
                 
-                // Send request
-                fetch('/api/query', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(requestData)
-                })
-                .then(response => response.json())
-                .then(data => {
-                    loading.style.display = 'none';
+                // Create promises for all API calls
+                const promises = selectedModels.map(model => {
+                    // Prepare request data
+                    const requestData = {
+                        query: query,
+                        model: model
+                    };
                     
-                    if (data.error) {
-                        showError(data.error);
-                        return;
-                    }
+                    if (modelVersion) requestData.modelVersion = modelVersion;
+                    if (taskType) requestData.taskType = taskType;
                     
-                    // Display response
-                    document.getElementById('response-text').textContent = data.response;
-                    document.getElementById('response-model').textContent = data.model;
-                    document.getElementById('response-time').textContent = data.responseTimeMs;
-                    document.getElementById('input-tokens').textContent = data.inputTokens;
-                    document.getElementById('output-tokens').textContent = data.outputTokens;
-                    document.getElementById('total-tokens').textContent = data.totalTokens;
-                    document.getElementById('response-cached').textContent = data.cached ? 'Yes' : 'No';
-                    
-                    responseContainer.style.display = 'block';
-                    
-                    // Typewriter effect
-                    typeWriterEffect(data.response);
-                })
-                .catch(error => {
-                    loading.style.display = 'none';
-                    showError('Error: ' + error.message);
-                });
-            });
-            
-            // Copy button
-            document.getElementById('copy-btn').addEventListener('click', function() {
-                const responseText = document.getElementById('response-text').textContent;
-                navigator.clipboard.writeText(responseText)
-                    .then(() => {
-                        const copyBtn = document.getElementById('copy-btn');
-                        const originalText = copyBtn.innerHTML;
-                        copyBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-check" viewBox="0 0 16 16"><path d="M10.97 4.97a.75.75 0 0 1 1.07 1.05l-3.99 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425a.267.267 0 0 1 .02-.022z"/></svg> Copied!';
-                        setTimeout(() => {
-                            copyBtn.innerHTML = originalText;
-                        }, 2000);
-                    })
-                    .catch(err => {
-                        console.error('Failed to copy: ', err);
-                    });
-            });
-            
-            // Download options
-            document.querySelectorAll('.dropdown-item[data-format]').forEach(item => {
-                item.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    const format = this.getAttribute('data-format');
-                    const responseText = document.getElementById('response-text').textContent;
-                    
-                    fetch('/api/download', {
+                    // Return the fetch promise
+                    return fetch('/api/query', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify({
-                            response: responseText,
-                            format: format
-                        })
+                        body: JSON.stringify(requestData)
                     })
-                    .then(response => {
-                        if (!response.ok) {
-                            throw new Error('Download failed');
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.error) {
+                            // Store error response
+                            responses.push({
+                                model: model,
+                                error: data.error,
+                                errorType: data.errorType
+                            });
+                        } else {
+                            // Store successful response
+                            responses.push(data);
                         }
-                        return response.blob();
-                    })
-                    .then(blob => {
-                        const url = window.URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.style.display = 'none';
-                        a.href = url;
-                        a.download = `llm_response.${format}`;
-                        document.body.appendChild(a);
-                        a.click();
-                        window.URL.revokeObjectURL(url);
                     })
                     .catch(error => {
-                        showError('Error downloading file: ' + error.message);
+                        // Store fetch error
+                        responses.push({
+                            model: model,
+                            error: error.message,
+                            errorType: 'fetch_error'
+                        });
                     });
                 });
+                
+                // Wait for all promises to resolve
+                Promise.all(promises)
+                    .then(() => {
+                        loading.style.display = 'none';
+                        
+                        if (responses.length === 0) {
+                            showError('No responses received from any model');
+                            return;
+                        }
+                        
+                        // Display all responses
+                        responses.forEach(data => {
+                            // Create response card
+                            const card = document.createElement('div');
+                            card.className = 'col';
+                            
+                            const cardHtml = `
+                                <div class="card h-100">
+                                    <div class="card-header d-flex justify-content-between align-items-center">
+                                        <h5 class="mb-0">${data.model || 'Unknown Model'}</h5>
+                                        <div class="btn-group">
+                                            <button class="btn btn-sm btn-outline-secondary copy-btn" data-response="${data.error ? data.error : data.response ? data.response.replace(/"/g, '&quot;') : ''}">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-clipboard" viewBox="0 0 16 16">
+                                                    <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/>
+                                                    <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/>
+                                                </svg>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-secondary download-btn" data-response="${data.error ? data.error : data.response ? data.response.replace(/"/g, '&quot;') : ''}" data-model="${data.model || 'unknown'}">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-download" viewBox="0 0 16 16">
+                                                    <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+                                                    <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="response-area ${data.error ? 'text-danger' : ''}" data-model="${data.model || 'unknown'}">${data.error ? data.error : data.response || 'No response'}</div>
+                                    </div>
+                                </div>
+                            `;
+                            
+                            card.innerHTML = cardHtml;
+                            responsesGrid.appendChild(card);
+                            
+                            // Add row to comparison table
+                            const tableRow = document.createElement('tr');
+                            tableRow.innerHTML = `
+                                <td>${data.model || 'Unknown'}</td>
+                                <td>${data.responseTimeMs || 'N/A'}</td>
+                                <td>${data.inputTokens || 'N/A'}</td>
+                                <td>${data.outputTokens || 'N/A'}</td>
+                                <td>${data.totalTokens || 'N/A'}</td>
+                                <td>${data.cached ? 'Yes' : 'No'}</td>
+                            `;
+                            comparisonTableBody.appendChild(tableRow);
+                            
+                            // Apply typewriter effect if not an error
+                            if (!data.error && data.response) {
+                                const responseElement = card.querySelector('.response-area');
+                                typeWriterEffect(responseElement, data.response);
+                            }
+                        });
+                        
+                        // Show response container
+                        responseContainer.style.display = 'block';
+                        
+                        // Add event listeners to copy buttons
+                        document.querySelectorAll('.copy-btn').forEach(btn => {
+                            btn.addEventListener('click', function() {
+                                const responseText = this.getAttribute('data-response');
+                                navigator.clipboard.writeText(responseText)
+                                    .then(() => {
+                                        const originalText = this.innerHTML;
+                                        this.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-check" viewBox="0 0 16 16"><path d="M10.97 4.97a.75.75 0 0 1 1.07 1.05l-3.99 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425a.267.267 0 0 1 .02-.022z"/></svg>';
+                                        setTimeout(() => {
+                                            this.innerHTML = originalText;
+                                        }, 2000);
+                                    })
+                                    .catch(err => {
+                                        console.error('Failed to copy: ', err);
+                                    });
+                            });
+                        });
+                        
+                        // Add event listeners to download buttons
+                        document.querySelectorAll('.download-btn').forEach(btn => {
+                            btn.addEventListener('click', function() {
+                                const responseText = this.getAttribute('data-response');
+                                const model = this.getAttribute('data-model');
+                                
+                                fetch('/api/download', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json'
+                                    },
+                                    body: JSON.stringify({
+                                        response: responseText,
+                                        format: document.getElementById('format-select').value
+                                    })
+                                })
+                                .then(response => {
+                                    if (!response.ok) {
+                                        throw new Error('Download failed');
+                                    }
+                                    return response.blob();
+                                })
+                                .then(blob => {
+                                    const url = window.URL.createObjectURL(blob);
+                                    const a = document.createElement('a');
+                                    a.style.display = 'none';
+                                    a.href = url;
+                                    a.download = `${model}_response.txt`;
+                                    document.body.appendChild(a);
+                                    a.click();
+                                    window.URL.revokeObjectURL(url);
+                                })
+                                .catch(error => {
+                                    showError('Error downloading file: ' + error.message);
+                                });
+                            });
+                        });
+                    })
+                    .catch(error => {
+                        loading.style.display = 'none';
+                        showError('Error: ' + error.message);
+                    });
             });
             
             // Helper functions
@@ -386,16 +486,15 @@
                 errorContainer.style.display = 'block';
             }
             
-            function typeWriterEffect(text) {
-                const responseElement = document.getElementById('response-text');
-                responseElement.textContent = '';
+            function typeWriterEffect(element, text) {
+                element.textContent = '';
                 
                 let i = 0;
-                const speed = 10; // typing speed in milliseconds
+                const speed = 5; // typing speed in milliseconds
                 
                 function type() {
                     if (i < text.length) {
-                        responseElement.textContent += text.charAt(i);
+                        element.textContent += text.charAt(i);
                         i++;
                         setTimeout(type, speed);
                     }
