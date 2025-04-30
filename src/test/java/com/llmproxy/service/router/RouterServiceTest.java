@@ -41,15 +41,15 @@ class RouterServiceTest {
         routerService = new RouterService(clientFactory);
         routerService.setTestMode(true); // Avoid actual availability checks
         
-        when(openAiClient.getModelType()).thenReturn(ModelType.OPENAI);
-        when(geminiClient.getModelType()).thenReturn(ModelType.GEMINI);
-        when(mistralClient.getModelType()).thenReturn(ModelType.MISTRAL);
-        when(claudeClient.getModelType()).thenReturn(ModelType.CLAUDE);
+        lenient().when(openAiClient.getModelType()).thenReturn(ModelType.OPENAI);
+        lenient().when(geminiClient.getModelType()).thenReturn(ModelType.GEMINI);
+        lenient().when(mistralClient.getModelType()).thenReturn(ModelType.MISTRAL);
+        lenient().when(claudeClient.getModelType()).thenReturn(ModelType.CLAUDE);
         
-        when(clientFactory.getClient(ModelType.OPENAI)).thenReturn(openAiClient);
-        when(clientFactory.getClient(ModelType.GEMINI)).thenReturn(geminiClient);
-        when(clientFactory.getClient(ModelType.MISTRAL)).thenReturn(mistralClient);
-        when(clientFactory.getClient(ModelType.CLAUDE)).thenReturn(claudeClient);
+        lenient().when(clientFactory.getClient(ModelType.OPENAI)).thenReturn(openAiClient);
+        lenient().when(clientFactory.getClient(ModelType.GEMINI)).thenReturn(geminiClient);
+        lenient().when(clientFactory.getClient(ModelType.MISTRAL)).thenReturn(mistralClient);
+        lenient().when(clientFactory.getClient(ModelType.CLAUDE)).thenReturn(claudeClient);
     }
 
     @Test

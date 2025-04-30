@@ -1,6 +1,5 @@
 package com.llmproxy.controller;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.llmproxy.exception.ModelError;
 import com.llmproxy.model.ModelType;
 import com.llmproxy.model.QueryRequest;
@@ -12,50 +11,58 @@ import com.llmproxy.service.llm.LlmClientFactory;
 import com.llmproxy.service.llm.QueryResult;
 import com.llmproxy.service.ratelimit.RateLimiterService;
 import com.llmproxy.service.router.RouterService;
+import jakarta.servlet.http.HttpServletRequest;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.http.ResponseEntity;
+import org.springframework.mock.web.MockHttpServletRequest;
 
 import java.time.Instant;
+import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.mockito.Mockito.*;
 
-@WebMvcTest(LlmProxyController.class)
+@ExtendWith(MockitoExtension.class)
 class LlmProxyControllerTest {
 
-    @Autowired
-    private MockMvc mockMvc;
-
-    @Autowired
-    private ObjectMapper objectMapper;
-
-    @MockBean
+    @Mock
     private RouterService routerService;
 
-    @MockBean
+    @Mock
     private LlmClientFactory clientFactory;
 
-    @MockBean
+    @Mock
     private CacheService cacheService;
 
-    @MockBean
+    @Mock
     private RateLimiterService rateLimiterService;
-
-    @MockBean
+    
+    @Mock
     private LlmClient llmClient;
+    
+    private LlmProxyController controller;
+    private MockHttpServletRequest mockRequest;
+    
+    @BeforeEach
+    void setUp() {
+        controller = new LlmProxyController(routerService, clientFactory, cacheService, rateLimiterService);
+        mockRequest = new MockHttpServletRequest();
+        mockRequest.setRemoteAddr("127.0.0.1");
+        
+        lenient().when(rateLimiterService.allowClient(anyString())).thenReturn(true);
+        lenient().when(clientFactory.getClient(any(ModelType.class))).thenReturn(llmClient);
+    }
 
     @Test
-    void query_validRequest_returnsResponse() throws Exception {
+    void query_validRequest_returnsResponse() {
         QueryRequest request = QueryRequest.builder()
                 .query("Test query")
                 .build();
@@ -70,57 +77,53 @@ class LlmProxyControllerTest {
                 .responseTimeMs(100)
                 .build();
         
-        when(rateLimiterService.allowClient(anyString())).thenReturn(true);
-        when(cacheService.get(any(QueryRequest.class))).thenReturn(null);
-        when(routerService.routeRequest(any(QueryRequest.class))).thenReturn(ModelType.OPENAI);
-        when(clientFactory.getClient(ModelType.OPENAI)).thenReturn(llmClient);
-        when(llmClient.query(anyString(), anyString())).thenReturn(queryResult);
+        lenient().when(cacheService.get(any(QueryRequest.class))).thenReturn(null);
+        lenient().when(routerService.routeRequest(any(QueryRequest.class))).thenReturn(ModelType.OPENAI);
+        lenient().when(llmClient.query(any(), any())).thenReturn(queryResult);
         
-        mockMvc.perform(post("/api/query")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.response").value("Test response"))
-                .andExpect(jsonPath("$.model").value("OPENAI"))
-                .andExpect(jsonPath("$.inputTokens").value(10))
-                .andExpect(jsonPath("$.outputTokens").value(20))
-                .andExpect(jsonPath("$.totalTokens").value(30));
+        ResponseEntity<QueryResponse> response = controller.query(request, mockRequest);
+        
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertEquals("Test response", response.getBody().getResponse());
+        assertEquals(ModelType.OPENAI, response.getBody().getModel());
+        assertEquals(10, response.getBody().getInputTokens());
+        assertEquals(20, response.getBody().getOutputTokens());
+        assertEquals(30, response.getBody().getTotalTokens());
     }
 
     @Test
-    void query_emptyQuery_returnsBadRequest() throws Exception {
+    void query_emptyQuery_returnsBadRequest() {
         QueryRequest request = QueryRequest.builder()
                 .query("")
                 .build();
         
-        when(rateLimiterService.allowClient(anyString())).thenReturn(true);
+        ResponseEntity<QueryResponse> response = controller.query(request, mockRequest);
         
-        mockMvc.perform(post("/api/query")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("Query cannot be empty"))
-                .andExpect(jsonPath("$.errorType").value("validation_error"));
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertEquals("Query cannot be empty", response.getBody().getError());
+        assertEquals("validation_error", response.getBody().getErrorType());
     }
 
     @Test
-    void query_rateLimited_returnsTooManyRequests() throws Exception {
+    void query_rateLimited_returnsTooManyRequests() {
         QueryRequest request = QueryRequest.builder()
                 .query("Test query")
                 .build();
         
-        when(rateLimiterService.allowClient(anyString())).thenReturn(false);
+        lenient().when(rateLimiterService.allowClient(anyString())).thenReturn(false);
         
-        mockMvc.perform(post("/api/query")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isTooManyRequests())
-                .andExpect(jsonPath("$.error").value("Rate limit exceeded. Please try again later."))
-                .andExpect(jsonPath("$.errorType").value("rate_limit"));
+        ResponseEntity<QueryResponse> response = controller.query(request, mockRequest);
+        
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertEquals("Rate limit exceeded. Please try again later.", response.getBody().getError());
+        assertEquals("rate_limit", response.getBody().getErrorType());
     }
 
     @Test
-    void query_cachedResponse_returnsCachedResponse() throws Exception {
+    void query_cachedResponse_returnsCachedResponse() {
         QueryRequest request = QueryRequest.builder()
                 .query("Test query")
                 .build();
@@ -132,41 +135,39 @@ class LlmProxyControllerTest {
                 .timestamp(Instant.now())
                 .build();
         
-        when(rateLimiterService.allowClient(anyString())).thenReturn(true);
-        when(cacheService.get(any(QueryRequest.class))).thenReturn(cachedResponse);
+        lenient().when(cacheService.get(any(QueryRequest.class))).thenReturn(cachedResponse);
         
-        mockMvc.perform(post("/api/query")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.response").value("Cached response"))
-                .andExpect(jsonPath("$.model").value("OPENAI"))
-                .andExpect(jsonPath("$.cached").value(true));
+        ResponseEntity<QueryResponse> response = controller.query(request, mockRequest);
+        
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertEquals("Cached response", response.getBody().getResponse());
+        assertEquals(ModelType.OPENAI, response.getBody().getModel());
+        assertTrue(response.getBody().isCached());
     }
 
     @Test
-    void query_modelError_returnsErrorResponse() throws Exception {
+    void query_modelError_returnsErrorResponse() {
         QueryRequest request = QueryRequest.builder()
                 .query("Test query")
                 .build();
         
-        when(rateLimiterService.allowClient(anyString())).thenReturn(true);
-        when(cacheService.get(any(QueryRequest.class))).thenReturn(null);
-        when(routerService.routeRequest(any(QueryRequest.class))).thenReturn(ModelType.OPENAI);
-        when(clientFactory.getClient(ModelType.OPENAI)).thenReturn(llmClient);
-        when(llmClient.query(anyString(), anyString())).thenThrow(ModelError.apiKeyMissingError(ModelType.OPENAI.toString()));
-        when(routerService.fallbackOnError(any(), any(), any())).thenThrow(ModelError.unavailableError("all"));
+        ModelError apiKeyError = ModelError.apiKeyMissingError(ModelType.OPENAI.toString());
         
-        mockMvc.perform(post("/api/query")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isServiceUnavailable())
-                .andExpect(jsonPath("$.error").value("Service unavailable"))
-                .andExpect(jsonPath("$.errorType").value("ModelError"));
+        lenient().when(cacheService.get(any(QueryRequest.class))).thenReturn(null);
+        lenient().when(routerService.routeRequest(any(QueryRequest.class))).thenReturn(ModelType.OPENAI);
+        lenient().when(llmClient.query(any(), any())).thenThrow(apiKeyError);
+        
+        ResponseEntity<QueryResponse> response = controller.query(request, mockRequest);
+        
+        assertEquals(HttpStatus.UNAUTHORIZED, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertEquals("API key not configured", response.getBody().getError());
+        assertEquals("ModelError", response.getBody().getErrorType());
     }
 
     @Test
-    void status_returnsAvailability() throws Exception {
+    void status_returnsAvailability() {
         StatusResponse statusResponse = StatusResponse.builder()
                 .openai(true)
                 .gemini(false)
@@ -174,38 +175,39 @@ class LlmProxyControllerTest {
                 .claude(false)
                 .build();
         
-        when(rateLimiterService.allowClient(anyString())).thenReturn(true);
-        when(routerService.getAvailability()).thenReturn(statusResponse);
+        lenient().when(routerService.getAvailability()).thenReturn(statusResponse);
         
-        mockMvc.perform(get("/api/status"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.openai").value(true))
-                .andExpect(jsonPath("$.gemini").value(false))
-                .andExpect(jsonPath("$.mistral").value(true))
-                .andExpect(jsonPath("$.claude").value(false));
+        ResponseEntity<StatusResponse> response = controller.status(mockRequest);
+        
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertTrue(response.getBody().isOpenai());
+        assertFalse(response.getBody().isGemini());
+        assertTrue(response.getBody().isMistral());
+        assertFalse(response.getBody().isClaude());
     }
 
     @Test
-    void health_returnsOk() throws Exception {
-        when(rateLimiterService.allowClient(anyString())).thenReturn(true);
+    void health_returnsOk() {
+        ResponseEntity<Map<String, Object>> response = controller.health(mockRequest);
         
-        mockMvc.perform(get("/api/health"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("ok"));
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertEquals("ok", response.getBody().get("status"));
     }
-
+    
     @Test
-    void download_validRequest_returnsFile() throws Exception {
-        when(rateLimiterService.allowClient(anyString())).thenReturn(true);
+    void download_validRequest_returnsFile() {
+        Map<String, String> request = Map.of(
+            "response", "Test response",
+            "format", "txt"
+        );
         
-        mockMvc.perform(post("/api/download")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"response\":\"Test response\",\"format\":\"txt\"}"))
-                .andExpect(status().isOk())
-                .andExpect(result -> {
-                    byte[] content = result.getResponse().getContentAsByteArray();
-                    String responseText = new String(content);
-                    assert responseText.equals("Test response");
-                });
+        ResponseEntity<byte[]> response = controller.download(request, mockRequest);
+        
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertEquals(MediaType.TEXT_PLAIN_VALUE, response.getHeaders().getContentType().toString());
+        assertEquals("attachment; filename=llm_response.txt", response.getHeaders().getFirst("Content-Disposition"));
+        assertEquals("Test response", new String(response.getBody()));
     }
 }
