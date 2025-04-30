@@ -449,7 +449,7 @@
                                     },
                                     body: JSON.stringify({
                                         response: responseText,
-                                        format: 'txt'
+                                        format: document.getElementById('format-select').value
                                     })
                                 })
                                 .then(response => {
