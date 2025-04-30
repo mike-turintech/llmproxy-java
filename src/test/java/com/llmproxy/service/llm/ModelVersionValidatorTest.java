@@ -65,19 +65,27 @@ class ModelVersionValidatorTest {
         assertNotNull(validator.getSupportedVersionsForModel(ModelType.MISTRAL));
         assertNotNull(validator.getSupportedVersionsForModel(ModelType.CLAUDE));
         
-        assertTrue(validator.getSupportedVersionsForModel(ModelType.OPENAI).contains("gpt-3.5-turbo"));
-        assertTrue(validator.getSupportedVersionsForModel(ModelType.GEMINI).contains("gemini-pro"));
-        assertTrue(validator.getSupportedVersionsForModel(ModelType.MISTRAL).contains("mistral-medium"));
+        assertTrue(validator.getSupportedVersionsForModel(ModelType.OPENAI).contains("gpt-4o"));
+        assertTrue(validator.getSupportedVersionsForModel(ModelType.GEMINI).contains("gemini-1.5-pro"));
+        assertTrue(validator.getSupportedVersionsForModel(ModelType.MISTRAL).contains("mistral-large-latest"));
         assertTrue(validator.getSupportedVersionsForModel(ModelType.CLAUDE).contains("claude-3-sonnet"));
+        
+        assertTrue(validator.getSupportedVersionsForModel(ModelType.OPENAI).contains("gpt-4o-mini"));
+        assertTrue(validator.getSupportedVersionsForModel(ModelType.GEMINI).contains("gemini-2.5-flash-preview-04-17"));
+        assertTrue(validator.getSupportedVersionsForModel(ModelType.MISTRAL).contains("codestral-latest"));
+        assertTrue(validator.getSupportedVersionsForModel(ModelType.CLAUDE).contains("claude-3-opus-20240229"));
     }
 
     private static Stream<Arguments> provideValidModelVersions() {
         return Stream.of(
+                Arguments.of(ModelType.OPENAI, "gpt-4o"),
                 Arguments.of(ModelType.OPENAI, "gpt-3.5-turbo"),
-                Arguments.of(ModelType.OPENAI, "gpt-4"),
-                Arguments.of(ModelType.GEMINI, "gemini-pro"),
-                Arguments.of(ModelType.MISTRAL, "mistral-medium"),
-                Arguments.of(ModelType.CLAUDE, "claude-3-sonnet")
+                Arguments.of(ModelType.GEMINI, "gemini-1.5-pro"),
+                Arguments.of(ModelType.GEMINI, "gemini-2.0-flash"),
+                Arguments.of(ModelType.MISTRAL, "mistral-large-latest"),
+                Arguments.of(ModelType.MISTRAL, "codestral-latest"),
+                Arguments.of(ModelType.CLAUDE, "claude-3-sonnet"),
+                Arguments.of(ModelType.CLAUDE, "claude-3-opus-20240229")
         );
     }
 
