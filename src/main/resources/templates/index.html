@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Proxy</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            padding-top: 20px;
+            transition: background-color 0.3s, color 0.3s;
+        }
+        .dark-mode {
+            background-color: #222;
+            color: #f5f5f5;
+        }
+        .dark-mode .card {
+            background-color: #333;
+            color: #f5f5f5;
+        }
+        .dark-mode .form-control, .dark-mode .form-select {
+            background-color: #444;
+            color: #f5f5f5;
+            border-color: #555;
+        }
+        .response-area {
+            min-height: 200px;
+            border-radius: 5px;
+            padding: 10px;
+            margin-top: 10px;
+            white-space: pre-wrap;
+            overflow-wrap: break-word;
+        }
+        .light-mode .response-area {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+        }
+        .dark-mode .response-area {
+            background-color: #444;
+            border: 1px solid #555;
+        }
+        .token-info {
+            font-size: 0.9rem;
+            margin-top: 10px;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        .status-available {
+            background-color: #28a745;
+        }
+        .status-unavailable {
+            background-color: #dc3545;
+        }
+        .loading {
+            display: none;
+        }
+        .loading-spinner {
+            width: 1.5rem;
+            height: 1.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>LLM Proxy</h1>
+            <div>
+                <button id="theme-toggle" class="btn btn-outline-secondary">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-moon" viewBox="0 0 16 16">
+                        <path d="M6 .278a.768.768 0 0 1 .08.858 7.208 7.208 0 0 0-.878 3.46c0 4.021 3.278 7.277 7.318 7.277.527 0 1.04-.055 1.533-.16a.787.787 0 0 1 .81.316.733.733 0 0 1-.031.893A8.349 8.349 0 0 1 8.344 16C3.734 16 0 12.286 0 7.71 0 4.266 2.114 1.312 5.124.06A.752.752 0 0 1 6 .278z"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5>Model Status</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <div>
+                            <span class="status-indicator" th:classappend="${openaiAvailable ? 'status-available' : 'status-unavailable'}"></span>
+                            OpenAI: <span th:text="${openaiAvailable ? 'Available' : 'Unavailable'}"></span>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div>
+                            <span class="status-indicator" th:classappend="${geminiAvailable ? 'status-available' : 'status-unavailable'}"></span>
+                            Gemini: <span th:text="${geminiAvailable ? 'Available' : 'Unavailable'}"></span>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div>
+                            <span class="status-indicator" th:classappend="${mistralAvailable ? 'status-available' : 'status-unavailable'}"></span>
+                            Mistral: <span th:text="${mistralAvailable ? 'Available' : 'Unavailable'}"></span>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div>
+                            <span class="status-indicator" th:classappend="${claudeAvailable ? 'status-available' : 'status-unavailable'}"></span>
+                            Claude: <span th:text="${claudeAvailable ? 'Available' : 'Unavailable'}"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <h5>Query LLM</h5>
+            </div>
+            <div class="card-body">
+                <form id="query-form">
+                    <div class="mb-3">
+                        <label for="query" class="form-label">Query</label>
+                        <textarea class="form-control" id="query" rows="4" placeholder="Enter your query here..."></textarea>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label for="model" class="form-label">Model (Optional)</label>
+                            <select class="form-select" id="model">
+                                <option value="">Auto-select</option>
+                                <option th:each="modelType : ${modelTypes}" th:value="${modelType}" th:text="${modelType}"></option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="model-version" class="form-label">Model Version (Optional)</label>
+                            <select class="form-select" id="model-version">
+                                <option value="">Default</option>
+                                <!-- OpenAI -->
+                                <optgroup label="OpenAI">
+                                    <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
+                                    <option value="gpt-4">gpt-4</option>
+                                    <option value="gpt-4-turbo">gpt-4-turbo</option>
+                                </optgroup>
+                                <!-- Gemini -->
+                                <optgroup label="Gemini">
+                                    <option value="gemini-pro">gemini-pro</option>
+                                    <option value="gemini-pro-vision">gemini-pro-vision</option>
+                                </optgroup>
+                                <!-- Mistral -->
+                                <optgroup label="Mistral">
+                                    <option value="mistral-tiny">mistral-tiny</option>
+                                    <option value="mistral-small">mistral-small</option>
+                                    <option value="mistral-medium">mistral-medium</option>
+                                    <option value="mistral-large">mistral-large</option>
+                                </optgroup>
+                                <!-- Claude -->
+                                <optgroup label="Claude">
+                                    <option value="claude-3-haiku">claude-3-haiku</option>
+                                    <option value="claude-3-sonnet">claude-3-sonnet</option>
+                                    <option value="claude-3-opus">claude-3-opus</option>
+                                </optgroup>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="task-type" class="form-label">Task Type (Optional)</label>
+                            <select class="form-select" id="task-type">
+                                <option value="">Auto-select</option>
+                                <option value="text_generation">Text Generation</option>
+                                <option value="summarization">Summarization</option>
+                                <option value="sentiment_analysis">Sentiment Analysis</option>
+                                <option value="question_answering">Question Answering</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between">
+                        <button type="submit" class="btn btn-primary">Submit</button>
+                        <div class="loading">
+                            <div class="spinner-border loading-spinner" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <span class="ms-2">Processing...</span>
+                        </div>
+                    </div>
+                </form>
+                
+                <div id="response-container" class="mt-4" style="display: none;">
+                    <h5>Response</h5>
+                    <div class="response-area" id="response-text"></div>
+                    
+                    <div class="d-flex justify-content-between align-items-center mt-3">
+                        <div class="token-info">
+                            <div><strong>Model:</strong> <span id="response-model"></span></div>
+                            <div><strong>Response Time:</strong> <span id="response-time"></span> ms</div>
+                            <div><strong>Tokens:</strong> <span id="input-tokens"></span> input / <span id="output-tokens"></span> output / <span id="total-tokens"></span> total</div>
+                            <div><strong>Cached:</strong> <span id="response-cached"></span></div>
+                        </div>
+                        
+                        <div class="btn-group">
+                            <button class="btn btn-outline-secondary" id="copy-btn">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-clipboard" viewBox="0 0 16 16">
+                                    <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/>
+                                    <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/>
+                                </svg>
+                                Copy
+                            </button>
+                            <button class="btn btn-outline-secondary dropdown-toggle" type="button" id="downloadDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-download" viewBox="0 0 16 16">
+                                    <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+                                    <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
+                                </svg>
+                                Download
+                            </button>
+                            <ul class="dropdown-menu" aria-labelledby="downloadDropdown">
+                                <li><a class="dropdown-item" href="#" data-format="txt">Text (.txt)</a></li>
+                                <li><a class="dropdown-item" href="#" data-format="pdf">PDF (.pdf)</a></li>
+                                <li><a class="dropdown-item" href="#" data-format="docx">Word (.docx)</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="error-container" class="mt-4 alert alert-danger" style="display: none;">
+                    <h5>Error</h5>
+                    <div id="error-message"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Theme toggle
+            const themeToggle = document.getElementById('theme-toggle');
+            const body = document.body;
+            
+            // Check for saved theme preference
+            const savedTheme = localStorage.getItem('theme');
+            if (savedTheme === 'dark') {
+                body.classList.add('dark-mode');
+                updateThemeIcon(true);
+            }
+            
+            themeToggle.addEventListener('click', function() {
+                const isDarkMode = body.classList.toggle('dark-mode');
+                updateThemeIcon(isDarkMode);
+                localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
+            });
+            
+            function updateThemeIcon(isDarkMode) {
+                themeToggle.innerHTML = isDarkMode 
+                    ? '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-sun" viewBox="0 0 16 16"><path d="M8 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6zm0 1a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM8 0a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2A.5.5 0 0 1 8 0zm0 13a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2A.5.5 0 0 1 8 13zm8-5a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h2a.5.5 0 0 1 .5.5zM3 8a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h2A.5.5 0 0 1 3 8zm10.657-5.657a.5.5 0 0 1 0 .707l-1.414 1.415a.5.5 0 1 1-.707-.708l1.414-1.414a.5.5 0 0 1 .707 0zm-9.193 9.193a.5.5 0 0 1 0 .707L3.05 13.657a.5.5 0 0 1-.707-.707l1.414-1.414a.5.5 0 0 1 .707 0zm9.193 2.121a.5.5 0 0 1-.707 0l-1.414-1.414a.5.5 0 0 1 .707-.707l1.414 1.414a.5.5 0 0 1 0 .707zM4.464 4.465a.5.5 0 0 1-.707 0L2.343 3.05a.5.5 0 1 1 .707-.707l1.414 1.414a.5.5 0 0 1 0 .708z"/></svg>'
+                    : '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-moon" viewBox="0 0 16 16"><path d="M6 .278a.768.768 0 0 1 .08.858 7.208 7.208 0 0 0-.878 3.46c0 4.021 3.278 7.277 7.318 7.277.527 0 1.04-.055 1.533-.16a.787.787 0 0 1 .81.316.733.733 0 0 1-.031.893A8.349 8.349 0 0 1 8.344 16C3.734 16 0 12.286 0 7.71 0 4.266 2.114 1.312 5.124.06A.752.752 0 0 1 6 .278z"/></svg>';
+            }
+            
+            // Form submission
+            const queryForm = document.getElementById('query-form');
+            const loading = document.querySelector('.loading');
+            const responseContainer = document.getElementById('response-container');
+            const errorContainer = document.getElementById('error-container');
+            
+            queryForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const query = document.getElementById('query').value.trim();
+                if (!query) {
+                    showError('Query cannot be empty');
+                    return;
+                }
+                
+                const model = document.getElementById('model').value;
+                const modelVersion = document.getElementById('model-version').value;
+                const taskType = document.getElementById('task-type').value;
+                
+                // Hide previous response/error and show loading
+                responseContainer.style.display = 'none';
+                errorContainer.style.display = 'none';
+                loading.style.display = 'flex';
+                
+                // Prepare request
+                const requestData = {
+                    query: query
+                };
+                
+                if (model) requestData.model = model;
+                if (modelVersion) requestData.modelVersion = modelVersion;
+                if (taskType) requestData.taskType = taskType;
+                
+                // Send request
+                fetch('/api/query', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestData)
+                })
+                .then(response => response.json())
+                .then(data => {
+                    loading.style.display = 'none';
+                    
+                    if (data.error) {
+                        showError(data.error);
+                        return;
+                    }
+                    
+                    // Display response
+                    document.getElementById('response-text').textContent = data.response;
+                    document.getElementById('response-model').textContent = data.model;
+                    document.getElementById('response-time').textContent = data.responseTimeMs;
+                    document.getElementById('input-tokens').textContent = data.inputTokens;
+                    document.getElementById('output-tokens').textContent = data.outputTokens;
+                    document.getElementById('total-tokens').textContent = data.totalTokens;
+                    document.getElementById('response-cached').textContent = data.cached ? 'Yes' : 'No';
+                    
+                    responseContainer.style.display = 'block';
+                    
+                    // Typewriter effect
+                    typeWriterEffect(data.response);
+                })
+                .catch(error => {
+                    loading.style.display = 'none';
+                    showError('Error: ' + error.message);
+                });
+            });
+            
+            // Copy button
+            document.getElementById('copy-btn').addEventListener('click', function() {
+                const responseText = document.getElementById('response-text').textContent;
+                navigator.clipboard.writeText(responseText)
+                    .then(() => {
+                        const copyBtn = document.getElementById('copy-btn');
+                        const originalText = copyBtn.innerHTML;
+                        copyBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-check" viewBox="0 0 16 16"><path d="M10.97 4.97a.75.75 0 0 1 1.07 1.05l-3.99 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425a.267.267 0 0 1 .02-.022z"/></svg> Copied!';
+                        setTimeout(() => {
+                            copyBtn.innerHTML = originalText;
+                        }, 2000);
+                    })
+                    .catch(err => {
+                        console.error('Failed to copy: ', err);
+                    });
+            });
+            
+            // Download options
+            document.querySelectorAll('.dropdown-item[data-format]').forEach(item => {
+                item.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const format = this.getAttribute('data-format');
+                    const responseText = document.getElementById('response-text').textContent;
+                    
+                    fetch('/api/download', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            response: responseText,
+                            format: format
+                        })
+                    })
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Download failed');
+                        }
+                        return response.blob();
+                    })
+                    .then(blob => {
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.style.display = 'none';
+                        a.href = url;
+                        a.download = `llm_response.${format}`;
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                    })
+                    .catch(error => {
+                        showError('Error downloading file: ' + error.message);
+                    });
+                });
+            });
+            
+            // Helper functions
+            function showError(message) {
+                document.getElementById('error-message').textContent = message;
+                errorContainer.style.display = 'block';
+            }
+            
+            function typeWriterEffect(text) {
+                const responseElement = document.getElementById('response-text');
+                responseElement.textContent = '';
+                
+                let i = 0;
+                const speed = 10; // typing speed in milliseconds
+                
+                function type() {
+                    if (i < text.length) {
+                        responseElement.textContent += text.charAt(i);
+                        i++;
+                        setTimeout(type, speed);
+                    }
+                }
+                
+                type();
+            }
+        });
+    </script>
+</body>
+</html>
