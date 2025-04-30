@@ -89,12 +89,17 @@ public class GeminiClient implements LlmClient {
                 .retrieve()
                 .onStatus(status -> status.equals(HttpStatus.TOO_MANY_REQUESTS), 
                     (request, response) -> { throw ModelError.rateLimitError(ModelType.GEMINI.toString()); })
-                .onStatus(status -> status.is4xxError() || status.is5xxError(),
+                .onStatus(status -> status.value() >= 400 && status.value() < 500,
                     (request, response) -> {
                         JsonNode errorNode = objectMapper.readTree(response.getBody());
                         String errorMessage = errorNode.path("error").path("message").asText("API error");
-                        boolean retryable = status.is5xxError();
-                        throw new ModelError(ModelType.GEMINI.toString(), status.value(), errorMessage, retryable);
+                        throw new ModelError(ModelType.GEMINI.toString(), response.getStatusCode().value(), errorMessage, false);
+                    })
+                .onStatus(status -> status.value() >= 500,
+                    (request, response) -> {
+                        JsonNode errorNode = objectMapper.readTree(response.getBody());
+                        String errorMessage = errorNode.path("error").path("message").asText("API error");
+                        throw new ModelError(ModelType.GEMINI.toString(), response.getStatusCode().value(), errorMessage, true);
                     })
                 .body(String.class);
             
