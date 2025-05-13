@@ -21,6 +21,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.junit.jupiter.api.DisplayName;
 
 import java.time.Instant;
 import java.util.Map;
@@ -62,6 +63,7 @@ class LlmProxyControllerTest {
     }
 
     @Test
+    @DisplayName("Should return valid response for a valid query request")
     void query_validRequest_returnsResponse() {
         QueryRequest request = QueryRequest.builder()
                 .query("Test query")
@@ -93,6 +95,7 @@ class LlmProxyControllerTest {
     }
 
     @Test
+    @DisplayName("Should return bad request response for empty query")
     void query_emptyQuery_returnsBadRequest() {
         QueryRequest request = QueryRequest.builder()
                 .query("")
@@ -107,6 +110,7 @@ class LlmProxyControllerTest {
     }
 
     @Test
+    @DisplayName("Should return too many requests response when rate limited")
     void query_rateLimited_returnsTooManyRequests() {
         QueryRequest request = QueryRequest.builder()
                 .query("Test query")
@@ -123,6 +127,7 @@ class LlmProxyControllerTest {
     }
 
     @Test
+    @DisplayName("Should return cached response when available")
     void query_cachedResponse_returnsCachedResponse() {
         QueryRequest request = QueryRequest.builder()
                 .query("Test query")
@@ -147,6 +152,7 @@ class LlmProxyControllerTest {
     }
 
     @Test
+    @DisplayName("Should return error response when model error occurs")
     void query_modelError_returnsErrorResponse() {
         QueryRequest request = QueryRequest.builder()
                 .query("Test query")
@@ -167,6 +173,7 @@ class LlmProxyControllerTest {
     }
 
     @Test
+    @DisplayName("Should return model availability status")
     void status_returnsAvailability() {
         StatusResponse statusResponse = StatusResponse.builder()
                 .openai(true)
@@ -188,6 +195,7 @@ class LlmProxyControllerTest {
     }
 
     @Test
+    @DisplayName("Should return OK status for health endpoint")
     void health_returnsOk() {
         ResponseEntity<Map<String, Object>> response = controller.health(mockRequest);
         
@@ -197,6 +205,7 @@ class LlmProxyControllerTest {
     }
     
     @Test
+    @DisplayName("Should return file when download request is valid")
     void download_validRequest_returnsFile() {
         Map<String, String> request = Map.of(
             "response", "Test response",
@@ -209,5 +218,83 @@ class LlmProxyControllerTest {
         assertEquals(MediaType.TEXT_PLAIN_VALUE, response.getHeaders().getContentType().toString());
         assertEquals("attachment; filename=llm_response.txt", response.getHeaders().getFirst("Content-Disposition"));
         assertEquals("Test response", new String(response.getBody()));
+    }
+    
+    @Test
+    @DisplayName("Should return bad request when download request has empty response")
+    void download_emptyResponse_returnsBadRequest() {
+        Map<String, String> request = Map.of(
+            "response", "",
+            "format", "txt"
+        );
+        
+        ResponseEntity<byte[]> response = controller.download(request, mockRequest);
+        
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+    }
+    
+    @Test
+    @DisplayName("Should return too many requests when rate limited for download")
+    void download_rateLimited_returnsTooManyRequests() {
+        Map<String, String> request = Map.of(
+            "response", "Test response",
+            "format", "txt"
+        );
+        
+        lenient().when(rateLimiterService.allowClient(anyString())).thenReturn(false);
+        
+        ResponseEntity<byte[]> response = controller.download(request, mockRequest);
+        
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, response.getStatusCode());
+    }
+    
+    @Test
+    @DisplayName("Should use default format when format not specified")
+    void download_nullFormat_usesDefaultFormat() {
+        Map<String, String> request = Map.of(
+            "response", "Test response"
+        );
+        
+        ResponseEntity<byte[]> response = controller.download(request, mockRequest);
+        
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertEquals(MediaType.TEXT_PLAIN_VALUE, response.getHeaders().getContentType().toString());
+        assertEquals("attachment; filename=llm_response.txt", response.getHeaders().getFirst("Content-Disposition"));
+    }
+    
+    @Test
+    @DisplayName("Should return too many requests when rate limited for status")
+    void status_rateLimited_returnsTooManyRequests() {
+        lenient().when(rateLimiterService.allowClient(anyString())).thenReturn(false);
+        
+        ResponseEntity<StatusResponse> response = controller.status(mockRequest);
+        
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, response.getStatusCode());
+    }
+    
+    @Test
+    @DisplayName("Should return too many requests when rate limited for health")
+    void health_rateLimited_returnsTooManyRequests() {
+        lenient().when(rateLimiterService.allowClient(anyString())).thenReturn(false);
+        
+        ResponseEntity<Map<String, Object>> response = controller.health(mockRequest);
+        
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, response.getStatusCode());
+    }
+
+    @Test
+    @DisplayName("Should return bad request for query exceeding maximum length")
+    void query_tooLongQuery_returnsBadRequest() {
+        String longQuery = "a".repeat(32001);
+        QueryRequest request = QueryRequest.builder()
+                .query(longQuery)
+                .build();
+        
+        ResponseEntity<QueryResponse> response = controller.query(request, mockRequest);
+        
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertEquals("Query exceeds maximum length of 32000 characters", response.getBody().getError());
+        assertEquals("validation_error", response.getBody().getErrorType());
     }
 }

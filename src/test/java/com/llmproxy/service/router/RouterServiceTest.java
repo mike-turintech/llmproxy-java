@@ -228,4 +228,96 @@ class RouterServiceTest {
         
         assertEquals(ModelType.MISTRAL, result);
     }
+
+    // ---- Enhanced Robustness tests for fallbackOnError start here ----
+
+    @Test
+    void fallbackOnError_withUserSpecifiedFallbackButUnavailable_selectsOtherAvailable() {
+        routerService.setModelAvailability(ModelType.OPENAI, false);
+        routerService.setModelAvailability(ModelType.GEMINI, false); // user fallback is unavailable
+        routerService.setModelAvailability(ModelType.MISTRAL, true); // Mistral is available
+        routerService.setModelAvailability(ModelType.CLAUDE, false);
+        
+        // User wanted GEMINI, which is unavailable
+        QueryRequest request = QueryRequest.builder()
+                .query("Test query")
+                .model(ModelType.GEMINI)
+                .build();
+        
+        ModelError error = ModelError.rateLimitError(ModelType.OPENAI.toString());
+
+        // Should select the next available model, which is MISTRAL
+        ModelType result = routerService.fallbackOnError(ModelType.OPENAI, request, error);
+        assertEquals(ModelType.MISTRAL, result);
+    }
+
+    @Test
+    void fallbackOnError_withAllButOneModelAvailable_returnsThatModel() {
+        // Only Claude is up
+        routerService.setModelAvailability(ModelType.OPENAI, false);
+        routerService.setModelAvailability(ModelType.GEMINI, false);
+        routerService.setModelAvailability(ModelType.MISTRAL, false);
+        routerService.setModelAvailability(ModelType.CLAUDE, true);
+
+        QueryRequest request = QueryRequest.builder()
+                .query("Test query")
+                .build();
+        ModelError error = ModelError.rateLimitError(ModelType.OPENAI.toString());
+        ModelType result = routerService.fallbackOnError(ModelType.OPENAI, request, error);
+        assertEquals(ModelType.CLAUDE, result);
+    }
+
+    @Test
+    void fallbackOnError_initialModelIsOnlyAvailableOptionButFails_noAlternatives_throw() {
+        // Only OpenAI is up, but it fails and fallback should not find any others
+        routerService.setModelAvailability(ModelType.OPENAI, true);
+        routerService.setModelAvailability(ModelType.GEMINI, false);
+        routerService.setModelAvailability(ModelType.MISTRAL, false);
+        routerService.setModelAvailability(ModelType.CLAUDE, false);
+        QueryRequest request = QueryRequest.builder()
+                .query("Test query")
+                .build();
+        ModelError error = ModelError.rateLimitError(ModelType.OPENAI.toString());
+        // Mark OpenAI as unavailable now (simulate it failed and shouldn't be retried)
+        routerService.setModelAvailability(ModelType.OPENAI, false);
+        assertThrows(ModelError.class, () -> routerService.fallbackOnError(ModelType.OPENAI, request, error));
+    }
+
+    @Test
+    void fallbackOnError_withTaskTypeAndPreferredModelUnavailable_selectsTaskTypeAlternative() {
+        // Use sentiment_analysis mapping: prefer OpenAI, if not, next available
+        routerService.setModelAvailability(ModelType.OPENAI, false);
+        routerService.setModelAvailability(ModelType.GEMINI, false);
+        routerService.setModelAvailability(ModelType.MISTRAL, true);
+        routerService.setModelAvailability(ModelType.CLAUDE, false);
+
+        QueryRequest request = QueryRequest.builder()
+                .query("Test query")
+                .taskType(TaskType.SENTIMENT_ANALYSIS)
+                .build();
+        ModelError error = ModelError.rateLimitError(ModelType.OPENAI.toString());
+        ModelType result = routerService.fallbackOnError(ModelType.OPENAI, request, error);
+        assertEquals(ModelType.MISTRAL, result);
+    }
+
+    @Test
+    void fallbackOnError_specifiedModelEqualsFailedModel_returnsAlternative() {
+        // User asked for MISTRAL, but MISTRAL failed, so must route elsewhere
+        routerService.setModelAvailability(ModelType.OPENAI, false);
+        routerService.setModelAvailability(ModelType.GEMINI, true);
+        routerService.setModelAvailability(ModelType.MISTRAL, true); // was up, but failed
+        routerService.setModelAvailability(ModelType.CLAUDE, true);
+
+        QueryRequest request = QueryRequest.builder()
+                .query("Test query")
+                .model(ModelType.MISTRAL)
+                .build();
+        // Mark MISTRAL as down now ("fails")
+        routerService.setModelAvailability(ModelType.MISTRAL, false);
+
+        ModelError error = ModelError.rateLimitError(ModelType.MISTRAL.toString());
+        // Should skip MISTRAL and pick next available: CLAUDE or GEMINI (impl can pick one of them; assert one of them)
+        ModelType result = routerService.fallbackOnError(ModelType.MISTRAL, request, error);
+        assertTrue(result == ModelType.GEMINI || result == ModelType.CLAUDE);
+    }
 }
