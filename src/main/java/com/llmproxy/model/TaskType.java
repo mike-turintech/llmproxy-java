@@ -1,5 +1,8 @@
 package com.llmproxy.model;
 
+import java.util.Map;
+import java.util.HashMap;
+
 public enum TaskType {
     TEXT_GENERATION("text_generation"),
     SUMMARIZATION("summarization"),
@@ -8,6 +11,15 @@ public enum TaskType {
     OTHER("other");
     
     private final String value;
+    
+    // Cache for fromString method to improve performance
+    private static final Map<String, TaskType> STRING_TO_ENUM_MAP = new HashMap<>();
+
+    static {
+        for (TaskType type : values()) {
+            STRING_TO_ENUM_MAP.put(type.value.toLowerCase(), type);
+        }
+    }
     
     TaskType(String value) {
         this.value = value;
@@ -18,12 +30,11 @@ public enum TaskType {
     }
     
     public static TaskType fromString(String text) {
-        for (TaskType type : TaskType.values()) {
-            if (type.value.equalsIgnoreCase(text)) {
-                return type;
-            }
+        if (text == null) {
+            return OTHER; // Or throw IllegalArgumentException, depending on desired behavior
         }
-        return OTHER;
+        TaskType type = STRING_TO_ENUM_MAP.get(text.toLowerCase());
+        return type != null ? type : OTHER;
     }
     
     @Override
